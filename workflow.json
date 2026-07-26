@@ -1,0 +1,335 @@
+{
+  "name": "SHOPPING_AGENT",
+  "nodes": [
+    {
+      "parameters": {
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.chatTrigger",
+      "typeVersion": 1.4,
+      "position": [
+        0,
+        0
+      ],
+      "id": "43840bae-2dd7-4740-bee1-b0be2cd5a347",
+      "name": "When chat message received",
+      "webhookId": "6cdd5713-3849-4818-9b31-7115b0e74502"
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=You are a Shopping Requirement Extraction Agent.\n\nYour job is to analyze the user's shopping request and extract the exact search requirements.\n\nReturn ONLY valid JSON. Do not recommend any products.\n\nUse this exact format:\n\n{\n  \"category\": \"\",\n  \"maxPrice\": null,\n  \"minPrice\": null,\n  \"minRating\": null,\n  \"minDiscount\": null,\n  \"brand\": \"\",\n  \"keywords\": []\n}\n\nRules:\n\n1. Extract the product category.\n2. If the user says \"perfume\" or \"perfumes\", set category to \"fragrances\".\n3. If the user says \"fragrance\" or \"fragrances\", set category to \"fragrances\".\n4. If the user says \"beauty\", set category to \"beauty\".\n5. If the user says \"under $200\", set maxPrice to 200.\n6. If the user says \"below $200\", set maxPrice to 200.\n7. If the user says \"less than $200\", set maxPrice to 200.\n8. If the user says \"above $50\", set minPrice to 50.\n9. If the user says \"rating above 4\", set minRating to 4.\n10. If the user says \"rating 4 or higher\", set minRating to 4.\n11. If the user specifies a discount, set minDiscount accordingly.\n12. If the user specifies a brand, extract the brand.\n13. Put additional product requirements in keywords.\n14. If a requirement is not mentioned, use null for numbers and an empty string for text.\n15. Do not invent requirements.\n16. Do not recommend products.\n17. Return JSON only.\n\nUser request:\n{{ $json.chatInput }}",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3.1,
+      "position": [
+        208,
+        0
+      ],
+      "id": "46a989d1-618c-4f3c-b635-be8b060c484f",
+      "name": "AI Agent"
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatGoogleGemini",
+      "typeVersion": 1.1,
+      "position": [
+        80,
+        208
+      ],
+      "id": "e0011589-6309-47dc-bf52-1b6770a347a6",
+      "name": "Google Gemini Chat Model",
+      "credentials": {
+        "googlePalmApi": {
+          "id": "JBpAVUEEzXmn9Eqw",
+          "name": "Google Gemini(PaLM) Api account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "url": "https://dummyjson.com/products",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        480,
+        16
+      ],
+      "id": "8051d045-4c4b-4e5f-8d6b-89e4b29e7edc",
+      "name": "HTTP Request"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "ffc10211-47bb-4ea7-a90c-99b5df22e49f",
+              "leftValue": "={{ $json.category }}",
+              "rightValue": "={{ JSON.parse($('AI Agent').first().json.output).category }}",
+              "operator": {
+                "type": "string",
+                "operation": "equals",
+                "name": "filter.operator.equals"
+              }
+            },
+            {
+              "id": "bf5d4fe4-7bb7-4da2-a3da-47fe5d892341",
+              "leftValue": "={{ Number($json.price) }}",
+              "rightValue": "={{ Number(JSON.parse($('AI Agent').first().json.output).maxPrice) }}",
+              "operator": {
+                "type": "number",
+                "operation": "lte"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.filter",
+      "typeVersion": 2.3,
+      "position": [
+        912,
+        96
+      ],
+      "id": "4f14758b-8e3a-439a-ab2a-93b7c285acb0",
+      "name": "Filter"
+    },
+    {
+      "parameters": {
+        "fieldToSplitOut": "products",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.splitOut",
+      "typeVersion": 1,
+      "position": [
+        704,
+        80
+      ],
+      "id": "ef6a3133-61e4-43ae-ab4b-5fab005acf83",
+      "name": "Split Out"
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=You are a strict product comparison engine.\n\nYour ONLY task is to compare the products provided in the input JSON.\n\nIMPORTANT:\nUse ONLY the following fields from the input:\n- title\n- price\n- rating\n- discountPercentage\n- brand\n- stock\n- category\n- description\n- tags\n\nNEVER use any other product fields.\n\nNEVER mention:\n- warranty\n- return policy\n- shipping\n- delivery\n- delivery time\n- shipping time\n- customer protection\n- availability beyond the stock field\n\nEven if these fields exist in the input, IGNORE THEM.\n\nNEVER invent information.\nNEVER assume information.\nNEVER use your general knowledge.\nNEVER add information from memory.\nNEVER create facts that are not explicitly present in the allowed fields.\n\nCompare ALL products in the input.\n\nSelect:\n1. BEST RECOMMENDATION\n2. ALTERNATIVE 1\n3. ALTERNATIVE 2\n\nUse ONLY these criteria:\n- Price\n- Rating\n- Discount percentage\n- Brand\n- Stock\n- Category\n- Description\n- Tags\n\nThe BEST RECOMMENDATION should be selected by considering the user's requirements first.\n\nIf the user does not specify a priority, choose the best overall product by considering:\n- Higher rating\n- Lower price\n- Higher discount\n- Higher stock\n\nFor every product, use only the exact data provided.\n\nUse this format:\n\n🏆 BEST RECOMMENDATION\n\nProduct Name:\nPrice:\nRating:\nDiscount:\nBrand:\nStock:\nCategory:\nWhy it is recommended:\n\n🥈 ALTERNATIVE 1\n\nProduct Name:\nPrice:\nRating:\nDiscount:\nBrand:\nStock:\nCategory:\nWhy it is an alternative:\n\n🥉 ALTERNATIVE 2\n\nProduct Name:\nPrice:\nRating:\nDiscount:\nBrand:\nStock:\nCategory:\nWhy it is an alternative:\n\nIMPORTANT:\nThe \"Why\" explanation must be based ONLY on the allowed fields.\n\nDO NOT mention warranty.\nDO NOT mention return policy.\nDO NOT mention shipping.\nDO NOT mention delivery.\n\nProduct data:\n{{ JSON.stringify($json.data) }}",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3.1,
+      "position": [
+        1392,
+        48
+      ],
+      "id": "8fd9d431-1601-4227-a8e5-e2ff2f157919",
+      "name": "AI Agent1"
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatGoogleGemini",
+      "typeVersion": 1.1,
+      "position": [
+        1392,
+        272
+      ],
+      "id": "1cd569cb-c1e7-463a-aff0-3f4feef51746",
+      "name": "Google Gemini Chat Model1",
+      "credentials": {
+        "googlePalmApi": {
+          "id": "JBpAVUEEzXmn9Eqw",
+          "name": "Google Gemini(PaLM) Api account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "aggregate": "aggregateAllItemData",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.aggregate",
+      "typeVersion": 1,
+      "position": [
+        1120,
+        96
+      ],
+      "id": "0fd67573-87f7-4842-8e2b-a1be116c6961",
+      "name": "Aggregate"
+    },
+    {
+      "parameters": {
+        "sendTo": "arshiyamulla017@gmail.com",
+        "subject": "SHOPPING AGENT",
+        "message": "={{ $json.html }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.2,
+      "position": [
+        1872,
+        48
+      ],
+      "id": "3bb6daa9-43d6-4245-a3ab-247b9212e68f",
+      "name": "Send a message",
+      "webhookId": "ceb2495e-238f-4f06-b36d-f60dd147db9f",
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "HF72zW9y2Zstr9An",
+          "name": "Gmail account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const output = $json.output || \"\";\n\nconst html = `\n<!DOCTYPE html>\n<html>\n<head>\n<meta charset=\"UTF-8\">\n<title>Shopping Advisor Recommendation</title>\n</head>\n\n<body style=\"margin:0; padding:0; background-color:#f4f6f8; font-family:Arial, Helvetica, sans-serif;\">\n\n<div style=\"max-width:700px; margin:30px auto; background:#ffffff; border-radius:12px; overflow:hidden; box-shadow:0 4px 15px rgba(0,0,0,0.1);\">\n\n    <!-- Header -->\n    <div style=\"background:#4f46e5; padding:30px; text-align:center; color:white;\">\n        <h1 style=\"margin:0; font-size:28px;\">\n            🛍️ Shopping Advisor\n        </h1>\n        <p style=\"margin:10px 0 0; font-size:16px;\">\n            Your Personalized Product Recommendations\n        </p>\n    </div>\n\n    <!-- Content -->\n    <div style=\"padding:30px;\">\n\n        <h2 style=\"color:#333333; margin-top:0;\">\n            ✨ Your Product Recommendations\n        </h2>\n\n        <div style=\"\n            background:#f8f9ff;\n            border-left:5px solid #4f46e5;\n            padding:20px;\n            border-radius:8px;\n            color:#333333;\n            font-size:15px;\n            line-height:1.7;\n            white-space:pre-line;\n        \">\n            ${output}\n        </div>\n\n    </div>\n\n    <!-- Footer -->\n    <div style=\"background:#f4f6f8; padding:20px; text-align:center; color:#777777; font-size:13px;\">\n        <p style=\"margin:0;\">\n            This recommendation was generated by your AI Shopping Advisor.\n        </p>\n        <p style=\"margin:8px 0 0;\">\n            Powered by AI 🤖\n        </p>\n    </div>\n\n</div>\n\n</body>\n</html>\n`;\n\nreturn [\n  {\n    json: {\n      html: html\n    }\n  }\n];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1712,
+        80
+      ],
+      "id": "dcd10dbf-d628-46d8-aab2-85d2bddbefe1",
+      "name": "Code in JavaScript"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "When chat message received": {
+      "main": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Google Gemini Chat Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AI Agent": {
+      "main": [
+        [
+          {
+            "node": "HTTP Request",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP Request": {
+      "main": [
+        [
+          {
+            "node": "Split Out",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Split Out": {
+      "main": [
+        [
+          {
+            "node": "Filter",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Filter": {
+      "main": [
+        [
+          {
+            "node": "Aggregate",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Google Gemini Chat Model1": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "AI Agent1",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Aggregate": {
+      "main": [
+        [
+          {
+            "node": "AI Agent1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AI Agent1": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code in JavaScript": {
+      "main": [
+        [
+          {
+            "node": "Send a message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "availableInMCP": false
+  },
+  "versionId": "038a783a-4d40-4860-92eb-d9cf636ff8aa",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "5bbac4f09167ea80ec0b9c9483ea058019d0fa8c2300c53a8ae6953869440579"
+  },
+  "nodeGroups": [],
+  "id": "IZNWbpFl0EXjbbJt",
+  "tags": []
+}
